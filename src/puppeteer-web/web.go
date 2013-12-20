@@ -9,7 +9,7 @@ import (
 	"os"
 	ppconf "puppeteerlib/conf"
 	pppool "puppeteerlib/pool"
-	ppqueue "puppeteerlib/queue"
+	ppstrutil "puppeteerlib/strutil"
 	"regexp"
 	"strconv"
 	"time"
@@ -77,10 +77,10 @@ func (this PuppeteerWebHandler) ServeHTTP(rsp http.ResponseWriter, req *http.Req
 		targetURL := req.FormValue(POST_PARAM_URL)
 		userAgent := req.FormValue(POST_PARAM_UAGENT)
 
-		if "" != targetURL && "" != userAgent && strutil.IsValidURL(targetURL) {
+		if "" != targetURL && "" != userAgent && ppstrutil.IsValidURL(targetURL) {
 			targetURL := url.QueryEscape(targetURL)
-			fingerprint := strutil.URL2Fingerprint(targetURL)
-			screenshotInfo := pppool.GetScreenshotByFingerprint(gPuppeteerConf.PoolDir, fingerprint)
+			fingerprint := ppstrutil.URL2Fingerprint(targetURL)
+			screenshotInfo := pppool.GetScreenshotInfoByFingerprint(gPuppeteerConf.PoolDir, fingerprint)
 
 			apiResponse := PuppeteerWebAPIResponse{}
 			if nil != screenshotInfo {
