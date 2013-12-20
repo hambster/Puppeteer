@@ -122,19 +122,42 @@ func main() {
 }
 
 func GetCmdArg() (*ppconf.PuppeteerConf, int, int, string) {
-	//@TODO
-	conf := &ppconf.PuppeteerConf{PoolDir: "/puppeteer/pool", QueueDir: "/puppeteer/queue", PhantomJSBin: "/puppeteer/bin/phantomjs", JS: "/puppeteer/js/shot.js", MaxProc: uint8(5)}
-	return conf, 8080, 60, ""
+	if 2 > len(os.Args) {
+		return nil, 0, 0, ""
+	}
+
+	conf := ppconf.LoadPuppeteerConf(os.Args[1])
+	port := PORT_DEFAULT
+	timeout := TIMEOUT_DEFAULT
+	addr := ADDR_DEFAULT
+
+	switch len(os.Args) {
+	case 5:
+		addr = os.Args[4]
+		fallthrough
+	case 4:
+		if tmp, err := strconv.ParseInt(os.Args[3], 10, 16); nil == err && 0 < tmp {
+			timeout = int(tmp)
+		}
+		fallthrough
+	case 3:
+		if tmp, err := strconv.ParseInt(os.Args[2], 10, 16); nil == err && 0 < tmp && 65535 >= tmp {
+			port = int(tmp)
+		}
+		break
+	}
+
+	return conf, port, timeout, addr
 }
 
 func Usage() {
 	usageStrFmt := `
     %s conf [port] [timeout] [addr]
 
-    conf: puppeteer configuration.
-    port: port to listen. default 8080.
-    addr: address to listen. default all.
-    timeout: request/response timeout. default 60.
+    conf: puppeteer configuration. required.
+    port: port to listen. optional. default 8080.
+    timeout: request/response timeout. optional. default 60.
+    addr: address to listen. optional. default all.
 `
 	usageStr := fmt.Sprintf(usageStrFmt, os.Args[0])
 	fmt.Print(usageStr)
