@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
-	"net/url"
 	"os"
 	ppconf "puppeteerlib/conf"
+	ppioutil "puppeteerlib/ioutil"
 	pppool "puppeteerlib/pool"
+	ppqueue "puppeteerlib/queue"
 	ppstrutil "puppeteerlib/strutil"
 	"regexp"
 	"strconv"
@@ -78,13 +80,17 @@ func (this PuppeteerWebHandler) ServeHTTP(rsp http.ResponseWriter, req *http.Req
 		userAgent := req.FormValue(POST_PARAM_UAGENT)
 
 		if "" != targetURL && "" != userAgent && ppstrutil.IsValidURL(targetURL) {
-			targetURL := url.QueryEscape(targetURL)
 			fingerprint := ppstrutil.URL2Fingerprint(targetURL)
 			screenshotInfo := pppool.GetScreenshotInfoByFingerprint(gPuppeteerConf.PoolDir, fingerprint)
 
 			apiResponse := PuppeteerWebAPIResponse{}
 			if nil != screenshotInfo {
-				pppool.AppendScreenshotLog(screenshotInfo, "")
+				pppool.AppendScreenshotLog(screenshotInfo, fmt.Sprintf("%d\t%s\n", time.Now().Unix(), targetURL))
+				jobData := map[string]string{ppqueue.URL: targetURL,
+					ppqueue.TARGET_FILE: pppool.GetScreenshotFilePath(screenshotInfo),
+					ppqueue.LOG_FILE:    pppool.GetScreenshotLogPath(screenshotInfo),
+					ppqueue.USER_AGENT:  userAgent}
+				ppqueue.WriteJob(gPuppeteerConf.QueueDir, jobData)
 			}
 			jsonBytes, _ := json.Marshal(apiResponse)
 
@@ -108,6 +114,10 @@ func main() {
 	}
 
 	gPuppeteerConf = conf
+	if logHandle, logErr := os.OpenFile(gPuppeteerConf.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, ppioutil.FILE_MASK); nil == logErr {
+		log.SetOutput(logHandle)
+		log.SetFlags(log.LstdFlags)
+	}
 	puppeteerHandler := PuppeteerWebHandler{}
 
 	srv := &http.Server{

@@ -13,6 +13,7 @@ const (
 	PHANTOMJS_BIN = "PhantomJSBin"
 	JS            = "JS"
 	MAX_PROC      = "MaxProc"
+	LOG_FILE      = "LogFile"
 )
 
 type PuppeteerConf struct {
@@ -20,6 +21,7 @@ type PuppeteerConf struct {
 	QueueDir     string
 	PhantomJSBin string
 	JS           string
+	LogFile      string
 	MaxProc      uint8
 }
 
@@ -33,14 +35,16 @@ func LoadPuppeteerConf(confPath string) *PuppeteerConf {
 		phantomBin, binOk := confInfo[PHANTOMJS_BIN]
 		js, jsOk := confInfo[JS]
 		maxProcStr, procOk := confInfo[MAX_PROC]
+		logFile, logOk := confInfo[LOG_FILE]
 
-		if poolOk && queueOk && binOk && jsOk && procOk {
+		if poolOk && queueOk && binOk && jsOk && procOk && logOk {
 			if maxProc, err := strconv.ParseUint(maxProcStr, 10, 8); nil == err {
 				ret = new(PuppeteerConf)
 				ret.PoolDir = poolDir
 				ret.QueueDir = queueDir
 				ret.PhantomJSBin = phantomBin
 				ret.JS = js
+				ret.LogFile = logFile
 				ret.MaxProc = uint8(maxProc)
 			}
 		}

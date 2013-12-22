@@ -3,9 +3,11 @@ package queue
 import (
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	ppioutil "puppeteerlib/ioutil"
 	"puppeteerlib/strutil"
+	"strings"
 )
 
 const (
@@ -40,15 +42,18 @@ func WriteJob(queueDir string, jobInfo map[string]string) bool {
 	waitDir := GetJobWaitDir(queueDir)
 
 	fileHandle, err := ioutil.TempFile(initDir, "."+strutil.GetRandomString(JOB_PREFIX_MAX))
-
 	if nil != err {
 		return false
 	}
 
-	tempPath := initDir + string(os.PathSeparator) + fileHandle.Name()
-	jobPath := waitDir + string(os.PathSeparator) + fileHandle.Name()[1:]
-	hasError := false
+	tempPath := fileHandle.Name()
+	jobPath := ""
 
+	sepIdx := strings.LastIndex(tempPath, string(os.PathSeparator))
+	sepIdx += len(string(os.PathSeparator)) + 1
+	jobPath = waitDir + string(os.PathSeparator) + tempPath[sepIdx:]
+
+	hasError := false
 	for jobPropName, jobPropVal := range jobInfo {
 		data := jobPropName + "=" + jobPropVal + "\n"
 		dataLen := len(data)
@@ -63,6 +68,7 @@ func WriteJob(queueDir string, jobInfo map[string]string) bool {
 	fileHandle.Close()
 	if !hasError {
 		if err := os.Rename(tempPath, jobPath); nil == err {
+			log.Printf("init %s -> %s\n", tempPath, jobPath)
 			ret = true
 		}
 	} else {

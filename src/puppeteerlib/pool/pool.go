@@ -2,7 +2,6 @@ package pool
 
 import (
 	"fmt"
-	"io"
 	"os"
 	ppioutil "puppeteerlib/ioutil"
 	ppstrutil "puppeteerlib/strutil"
@@ -98,10 +97,10 @@ func AppendScreenshotLog(info *ScreenshotInfo, logToAppend string) bool {
 		_, err := os.Stat(info.PoolDir)
 
 		if nil == err {
-			fh, err := os.OpenFile(screenshotLogPath, os.O_CREATE|os.O_APPEND, ppioutil.FILE_MASK)
+			fh, err := os.OpenFile(screenshotLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, ppioutil.FILE_MASK)
 			if nil == err {
 				ret = true
-				io.WriteString(fh, logToAppend)
+				fh.WriteString(logToAppend)
 				fh.Close()
 			}
 		}
