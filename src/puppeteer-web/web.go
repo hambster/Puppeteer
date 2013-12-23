@@ -89,6 +89,7 @@ func (this PuppeteerWebHandler) ServeHTTP(rsp http.ResponseWriter, req *http.Req
 						filePath := pppool.GetScreenshotFilePath(screenshotInfo)
 						if fh, openErr := os.OpenFile(filePath, os.O_RDONLY, ppioutil.FILE_MASK); nil == openErr {
 							rsp.Header().Set("Content-Type", "image/png")
+							rsp.Header().Set("Content-Disposition", "inline; filename=screenshot.png")
 							io.Copy(rsp, fh)
 							fh.Close()
 						} else {
