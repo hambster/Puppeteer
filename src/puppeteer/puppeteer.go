@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	ppconf "puppeteerlib/conf"
+	ppioutil "puppeteerlib/ioutil"
 	ppqueue "puppeteerlib/queue"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -88,6 +89,7 @@ func NewScoreboard(conf *ppconf.PuppeteerConf) *Scoreboard {
 	ret.Conf = conf
 	ret.Lock = new(sync.RWMutex)
 	ret.procCnt = 0
+	ret.terminate = false
 
 	return ret
 }
@@ -101,6 +103,7 @@ func JobMaster(queueChannel chan string, scoreboard *Scoreboard) {
 	maxProc := scoreboard.Conf.MaxProc
 	scoreboard.Lock.RUnlock()
 
+	log.Printf("job master starts")
 	for idx := procCnt; idx < maxProc; idx++ {
 		go JobSlave(queueChannel, scoreboard)
 	}
@@ -111,7 +114,7 @@ func JobMaster(queueChannel chan string, scoreboard *Scoreboard) {
 		}
 
 		waitDir := ppqueue.GetJobWaitDir(queueDir)
-		if dirHandle, err := os.Open(waitDir); nil != err {
+		if dirHandle, err := os.Open(waitDir); nil == err {
 			for {
 				fileList, err := dirHandle.Readdir(1)
 
@@ -123,6 +126,8 @@ func JobMaster(queueChannel chan string, scoreboard *Scoreboard) {
 				queueChannel <- queueFile
 			}
 			dirHandle.Close()
+		} else {
+			log.Printf("open queue dir error - %s", err)
 		}
 		time.Sleep(time.Second)
 	}
@@ -142,6 +147,7 @@ func JobSlave(queueChannel chan string, scoreboard *Scoreboard) {
 	jsPath := scoreboard.Conf.JS
 	scoreboard.Lock.RUnlock()
 
+	log.Printf("job slave starts")
 	t := time.NewTimer(time.Second)
 	for {
 		if scoreboard.IsTerminated() {
@@ -153,6 +159,7 @@ func JobSlave(queueChannel chan string, scoreboard *Scoreboard) {
 			if !queueValid {
 				break
 			}
+
 			if sepIdx := strings.LastIndex(queueFile, string(os.PathSeparator)); -1 != sepIdx {
 				runDir := ppqueue.GetJobRunDir(queueDir)
 				queueFileName := string(queueFile[sepIdx+1:])
@@ -160,12 +167,13 @@ func JobSlave(queueChannel chan string, scoreboard *Scoreboard) {
 
 				if err := os.Rename(queueFile, runFile); nil == err {
 					if jobInfo := ppqueue.ReadJob(runFile); nil != jobInfo {
-						if sepIdx := strings.LastIndex(jobInfo[ppqueue.TARGET_FILE], string(os.PathSeparator)); -1 != sepIdx {
-
+						if _, statErr := os.Stat(jobInfo[ppqueue.TARGET_FILE]); nil != statErr && os.IsNotExist(statErr) {
+							log.Printf("process job %s for %s\n", runFile, jobInfo[ppqueue.TARGET_FILE])
+							cmd := exec.Command(phantomJSBin, jsPath, jobInfo[ppqueue.URL], jobInfo[ppqueue.TARGET_FILE], jobInfo[ppqueue.LOG_FILE], jobInfo[ppqueue.USER_AGENT])
+							if err := cmd.Run(); nil != err {
+								log.Printf("process job err - %s", err.Error())
+							}
 						}
-
-						cmd := exec.Command(phantomJSBin, jsPath, jobInfo[ppqueue.URL], jobInfo[ppqueue.TARGET_FILE], jobInfo[ppqueue.LOG_FILE], jobInfo[ppqueue.USER_AGENT])
-						cmd.Run()
 					}
 
 					os.Remove(runFile)
@@ -180,10 +188,18 @@ func JobSlave(queueChannel chan string, scoreboard *Scoreboard) {
 }
 
 func main() {
-	cmdMap := GetCmdArg()
-	puppeteerConf := GetPuppeteerConf(cmdMap)
+	if 2 > len(os.Args) {
+		Usage()
+	}
+
+	puppeteerConf := ppconf.LoadPuppeteerConf(os.Args[1])
 	if !ppconf.ChkPuppeteerConf(puppeteerConf) {
 		Usage()
+	}
+
+	if logFH, logErr := os.OpenFile(puppeteerConf.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, ppioutil.FILE_MASK); nil == logErr {
+		log.SetOutput(logFH)
+		log.SetFlags(log.LstdFlags)
 	}
 
 	queueChannel := make(chan string, 1)
@@ -218,62 +234,11 @@ func main() {
 
 func Usage() {
 	usageStrFmt := `
-    %s [-max-proc=$numProc] [-pool-dir=$poolDir] [-queue-dir=$queueDir] [-phantomjs-bin=$phantomjsPath] [-js=$jsPath]
+    %s [puppeteer.conf]
 
-    -max-proc: number of maximum process to take url screenshot. default 5.
-    -pool-dir: directory to store screenshot files. default "/puppeteer/pool"
-    -queue-dir: directory to grab job files. default "/puppeteer/queue"
-    -phantomjs-bin: binary file of phantomjs.
-    -js: js script to run.
-
+    puppeteer.conf: configuration of puppeteer.
 `
 	usageStr := fmt.Sprintf(usageStrFmt, os.Args[0])
 	fmt.Print(usageStr)
 	os.Exit(1)
-}
-
-func GetPuppeteerConf(cmdMap map[string]string) *ppconf.PuppeteerConf {
-	ret := new(ppconf.PuppeteerConf)
-	ret.MaxProc = uint8(5)
-	ret.PoolDir = POOL_DIR_DEFAULT
-
-	if arg, ok := cmdMap[OPT_POOL_DIR]; ok {
-		ret.PoolDir = arg
-	}
-
-	if arg, ok := cmdMap[OPT_QUEUE_DIR]; ok {
-		ret.QueueDir = arg
-	}
-
-	if arg, ok := cmdMap[OPT_MAX_PROC]; ok {
-		if numVal, err := strconv.ParseUint(arg, 10, 8); nil == err {
-			ret.MaxProc = uint8(numVal)
-		}
-	}
-
-	if arg, ok := cmdMap[OPT_PHJS_BIN]; ok && "" != cmdMap[OPT_PHJS_BIN] {
-		ret.PhantomJSBin = arg
-	}
-
-	if arg, ok := cmdMap[OPT_JS]; ok && "" != cmdMap[OPT_JS] {
-		ret.JS = arg
-	}
-
-	return ret
-}
-
-func GetCmdArg() map[string]string {
-	ret := map[string]string{OPT_MAX_PROC: MAX_PROC_DEFAULT, OPT_POOL_DIR: POOL_DIR_DEFAULT, OPT_QUEUE_DIR: QUEUE_DIR_DEFAULT, OPT_PHJS_BIN: "", OPT_JS: ""}
-
-	var equalIdx int
-	for idx := int(0); idx < len(os.Args); idx++ {
-		if '-' == os.Args[idx][0] {
-			equalIdx = strings.Index(os.Args[idx], "=")
-			if _, ok := ret[string(os.Args[idx][1:equalIdx])]; ok && -1 != equalIdx {
-				ret[string(os.Args[idx][1:equalIdx])] = string(os.Args[idx][equalIdx+1:])
-			}
-		}
-	}
-
-	return ret
 }

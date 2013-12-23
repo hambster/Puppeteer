@@ -20,12 +20,20 @@ import (
 const (
 	BODY_MAX_SIZE       = 4096
 	INFO_URI_PREFIX     = "/info/"
+	PIC_URI_PREFIX      = "/pic/"
 	HEADER_SIZE_DEFAULT = 1 << 20 //1M
 	TIMEOUT_DEFAULT     = 60      //60 seconds
 	ADDR_DEFAULT        = ""
 	PORT_DEFAULT        = 8080
 	POST_PARAM_URL      = "url"
 	POST_PARAM_UAGENT   = "userAgent"
+)
+
+const (
+	API_RET_ERR_IO     = -1
+	API_RET_OK         = 0
+	API_RET_ERR_IO_MSG = "io error"
+	API_RET_OK_MSG     = ""
 )
 
 type PuppeteerWebAPIResponse struct {
@@ -57,29 +65,55 @@ func (this PuppeteerWebHandler) ServeHTTP(rsp http.ResponseWriter, req *http.Req
 		}
 	}
 
+	pathRegexp := regexp.MustCompile("^(\\/[a-zA-Z0-9\\-\\_]+\\/)([a-f0-9]{32}\\.[\\d]+)$")
 	if "GET" == req.Method {
-		pathRegexp := regexp.MustCompile("^" + regexp.QuoteMeta(INFO_URI_PREFIX) + "([a-f0-9]{32}\\.[\\d]+)$")
 		if matchList := pathRegexp.FindStringSubmatch(req.URL.Path); nil != matchList {
-			if screenshotInfo := pppool.GetScreenshotInfoByFingerprint(gPuppeteerConf.PoolDir, matchList[1]); nil != screenshotInfo {
-				apiResponse := PuppeteerWebAPIResponse{
-					RetCode: 0,
-					RetMsg:  "",
-					Data:    PuppeteerWebAPIInfo{Key: screenshotInfo.Fingerprint, Status: screenshotInfo.Status, LastUpdate: screenshotInfo.LastUpdate}}
-				jsonBytes, _ := json.Marshal(apiResponse)
+			switch matchList[1] {
+			case INFO_URI_PREFIX:
+				if screenshotInfo := pppool.GetScreenshotInfoByFingerprint(gPuppeteerConf.PoolDir, matchList[2]); nil != screenshotInfo {
+					apiResponse := PuppeteerWebAPIResponse{
+						RetCode: API_RET_OK,
+						RetMsg:  "",
+						Data:    PuppeteerWebAPIInfo{Key: screenshotInfo.Fingerprint, Status: screenshotInfo.Status, LastUpdate: screenshotInfo.LastUpdate}}
+					jsonBytes, _ := json.Marshal(apiResponse)
 
-				rsp.Header().Set("Content-Type", "application/json")
-				io.WriteString(rsp, string(jsonBytes))
-			} else {
-				rsp.WriteHeader(http.StatusBadRequest)
+					rsp.Header().Set("Content-Type", "application/json")
+					io.WriteString(rsp, string(jsonBytes))
+				} else {
+					rsp.WriteHeader(http.StatusBadRequest)
+				}
+				break
+			case PIC_URI_PREFIX:
+				if screenshotInfo := pppool.GetScreenshotInfoByFingerprint(gPuppeteerConf.PoolDir, matchList[2]); nil != screenshotInfo {
+					if pppool.STAT_READY == screenshotInfo.Status {
+						filePath := pppool.GetScreenshotFilePath(screenshotInfo)
+						if fh, openErr := os.OpenFile(filePath, os.O_RDONLY, ppioutil.FILE_MASK); nil == openErr {
+							rsp.Header().Set("Content-Type", "image/png")
+							io.Copy(rsp, fh)
+							fh.Close()
+						} else {
+							rsp.WriteHeader(http.StatusNotFound)
+						}
+					} else {
+						rsp.WriteHeader(http.StatusNotFound)
+
+					}
+				} else {
+					rsp.WriteHeader(http.StatusBadRequest)
+				}
+				break
+			default:
+				rsp.WriteHeader(http.StatusNotFound)
+				break
 			}
 		} else {
-			rsp.WriteHeader(http.StatusNotFound)
+			rsp.WriteHeader(http.StatusBadRequest)
 		}
 	} else if "POST" == req.Method {
 		targetURL := req.FormValue(POST_PARAM_URL)
 		userAgent := req.FormValue(POST_PARAM_UAGENT)
 
-		if "" != targetURL && "" != userAgent && ppstrutil.IsValidURL(targetURL) {
+		if req.URL.Path == INFO_URI_PREFIX && "" != targetURL && "" != userAgent && ppstrutil.IsValidURL(targetURL) {
 			fingerprint := ppstrutil.URL2Fingerprint(targetURL)
 			screenshotInfo := pppool.GetScreenshotInfoByFingerprint(gPuppeteerConf.PoolDir, fingerprint)
 
@@ -90,7 +124,14 @@ func (this PuppeteerWebHandler) ServeHTTP(rsp http.ResponseWriter, req *http.Req
 					ppqueue.TARGET_FILE: pppool.GetScreenshotFilePath(screenshotInfo),
 					ppqueue.LOG_FILE:    pppool.GetScreenshotLogPath(screenshotInfo),
 					ppqueue.USER_AGENT:  userAgent}
-				ppqueue.WriteJob(gPuppeteerConf.QueueDir, jobData)
+				if ppqueue.WriteJob(gPuppeteerConf.QueueDir, jobData) {
+					apiResponse.RetCode = API_RET_OK
+					apiResponse.Data = PuppeteerWebAPIInfo{Key: screenshotInfo.Fingerprint, Status: pppool.STAT_RUNNING, LastUpdate: 0}
+				} else {
+					apiResponse.RetCode = API_RET_ERR_IO
+					apiResponse.RetMsg = API_RET_ERR_IO_MSG
+					apiResponse.Data = PuppeteerWebAPIInfo{Key: screenshotInfo.Fingerprint, Status: pppool.STAT_RUNNING, LastUpdate: 0}
+				}
 			}
 			jsonBytes, _ := json.Marshal(apiResponse)
 

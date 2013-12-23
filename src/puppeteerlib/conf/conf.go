@@ -54,6 +54,10 @@ func LoadPuppeteerConf(confPath string) *PuppeteerConf {
 }
 
 func ChkPuppeteerConf(puppeteerConf *PuppeteerConf) bool {
+	if nil == puppeteerConf {
+		return false
+	}
+
 	os.MkdirAll(puppeteerConf.PoolDir, ppioutil.DIR_MASK)
 	os.MkdirAll(puppeteerConf.QueueDir, ppioutil.DIR_MASK)
 	initDir := ppqueue.GetJobInitDir(puppeteerConf.QueueDir)

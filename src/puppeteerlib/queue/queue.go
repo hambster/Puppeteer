@@ -3,7 +3,6 @@ package queue
 import (
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	ppioutil "puppeteerlib/ioutil"
 	"puppeteerlib/strutil"
@@ -68,7 +67,6 @@ func WriteJob(queueDir string, jobInfo map[string]string) bool {
 	fileHandle.Close()
 	if !hasError {
 		if err := os.Rename(tempPath, jobPath); nil == err {
-			log.Printf("init %s -> %s\n", tempPath, jobPath)
 			ret = true
 		}
 	} else {
