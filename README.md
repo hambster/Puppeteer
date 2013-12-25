@@ -75,7 +75,7 @@ Advanced features will be added in the future.
 
 * GET /pic/{key}  
   To download screenshot as inline images (i.e., you can use  
-  this url in html &gt;img&lt; directly.) Please check HTTP response code.
+  this url in html &lt;img&gt; directly.) Please check HTTP response code.
   For valid screenshot, you will get:
   
   * **Status 200** with **Content-Disposition: inline; filename=screenshot.png**.  
