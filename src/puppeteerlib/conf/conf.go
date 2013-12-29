@@ -8,12 +8,14 @@ import (
 )
 
 const (
-	POOL_DIR      = "PoolDir"
-	QUEUE_DIR     = "QueueDir"
-	PHANTOMJS_BIN = "PhantomJSBin"
-	JS            = "JS"
-	MAX_PROC      = "MaxProc"
-	LOG_FILE      = "LogFile"
+	POOL_DIR       = "PoolDir"
+	QUEUE_DIR      = "QueueDir"
+	PHANTOMJS_BIN  = "PhantomJSBin"
+	JS             = "JS"
+	MAX_PROC       = "MaxProc"
+	LOG_FILE       = "LogFile"
+	EXPIRE         = "Expire"
+	EXPIRE_DEFAULT = int64(7200)
 )
 
 type PuppeteerConf struct {
@@ -23,6 +25,7 @@ type PuppeteerConf struct {
 	JS           string
 	LogFile      string
 	MaxProc      uint8
+	Expire       int64
 }
 
 func LoadPuppeteerConf(confPath string) *PuppeteerConf {
@@ -36,8 +39,9 @@ func LoadPuppeteerConf(confPath string) *PuppeteerConf {
 		js, jsOk := confInfo[JS]
 		maxProcStr, procOk := confInfo[MAX_PROC]
 		logFile, logOk := confInfo[LOG_FILE]
+		expireStr, expireOk := confInfo[EXPIRE]
 
-		if poolOk && queueOk && binOk && jsOk && procOk && logOk {
+		if poolOk && queueOk && binOk && jsOk && procOk && logOk && expireOk {
 			if maxProc, err := strconv.ParseUint(maxProcStr, 10, 8); nil == err {
 				ret = new(PuppeteerConf)
 				ret.PoolDir = poolDir
@@ -46,6 +50,11 @@ func LoadPuppeteerConf(confPath string) *PuppeteerConf {
 				ret.JS = js
 				ret.LogFile = logFile
 				ret.MaxProc = uint8(maxProc)
+				ret.Expire = EXPIRE_DEFAULT
+				expire, err := strconv.ParseInt(expireStr, 10, 64)
+				if nil == err && 0 < expire {
+					ret.Expire = expire
+				}
 			}
 		}
 	}

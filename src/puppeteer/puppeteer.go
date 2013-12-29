@@ -134,6 +134,7 @@ func JobMaster(queueChannel chan string, scoreboard *Scoreboard) {
 
 	close(queueChannel)
 	scoreboard.DecrProcCnt()
+	log.Printf("master stops\n")
 }
 
 func JobSlave(queueChannel chan string, scoreboard *Scoreboard) {
@@ -145,6 +146,7 @@ func JobSlave(queueChannel chan string, scoreboard *Scoreboard) {
 	queueDir := scoreboard.Conf.QueueDir
 	phantomJSBin := scoreboard.Conf.PhantomJSBin
 	jsPath := scoreboard.Conf.JS
+	expire := scoreboard.Conf.Expire
 	scoreboard.Lock.RUnlock()
 
 	log.Printf("job slave starts")
@@ -166,12 +168,15 @@ func JobSlave(queueChannel chan string, scoreboard *Scoreboard) {
 				runFile := runDir + string(os.PathSeparator) + queueFileName
 
 				if err := os.Rename(queueFile, runFile); nil == err {
+					timestamp := time.Now().Unix()
 					if jobInfo := ppqueue.ReadJob(runFile); nil != jobInfo {
-						if _, statErr := os.Stat(jobInfo[ppqueue.TARGET_FILE]); nil != statErr && os.IsNotExist(statErr) {
+						if fileStat, statErr := os.Stat(jobInfo[ppqueue.TARGET_FILE]); (nil != statErr && os.IsNotExist(statErr)) || (nil == statErr && expire < (timestamp-fileStat.ModTime().Unix())) {
 							log.Printf("process job %s for %s\n", runFile, jobInfo[ppqueue.TARGET_FILE])
+							log.Printf("process job %s begins\n", runFile)
 							cmd := exec.Command(phantomJSBin, jsPath, jobInfo[ppqueue.URL], jobInfo[ppqueue.TARGET_FILE], jobInfo[ppqueue.LOG_FILE], jobInfo[ppqueue.USER_AGENT])
+							log.Printf("process job %s ends\n", runFile)
 							if err := cmd.Run(); nil != err {
-								log.Printf("process job err - %s", err.Error())
+								log.Printf("process job err - %s\n", err.Error())
 							}
 						}
 					}
@@ -185,6 +190,7 @@ func JobSlave(queueChannel chan string, scoreboard *Scoreboard) {
 	}
 
 	scoreboard.DecrProcCnt()
+	log.Printf("slave stops\n")
 }
 
 func main() {
@@ -229,6 +235,7 @@ func main() {
 		time.Sleep(time.Second)
 	}
 
+	log.Printf("puppeteer stops")
 	os.Exit(0)
 }
 
