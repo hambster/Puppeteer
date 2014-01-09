@@ -60,7 +60,7 @@ func (this PuppeteerWebHandler) ServeHTTP(rsp http.ResponseWriter, req *http.Req
 		err := req.ParseMultipartForm(BODY_MAX_SIZE)
 
 		if nil != err {
-			rsp.WriteHeader(http.StatusRequestURITooLong)
+			rsp.WriteHeader(http.StatusRequestEntityTooLarge)
 			return
 		}
 	}
